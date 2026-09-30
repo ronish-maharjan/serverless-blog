@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>Admin · Ronish Maharjan</title>
+
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+
+<header class="site-header">
+    <div>
+        <strong>Ronish Maharjan</strong>
+        <span>Student ID: 79010424</span>
+    </div>
+
+    <nav>
+        <a href="/">Portfolio</a>
+        <a href="/blog.html">Blog</a>
+        <button id="logout">Logout</button>
+    </nav>
+</header>
+
+<main>
+
+<section>
+
+    <h1>Blog Administration</h1>
+
+    <p>
+        Student ID: <strong>79010424</strong>
+    </p>
+
+    <form id="post-form">
+
+        <input
+            type="hidden"
+            id="post-id"
+        >
+
+        <label>
+            Title
+
+            <input
+                id="title"
+                type="text"
+                required
+            >
+        </label>
+
+        <label>
+            Excerpt
+
+            <textarea
+                id="excerpt"
+                rows="3"
+            ></textarea>
+        </label>
+
+        <label>
+            Content
+
+            <textarea
+                id="content"
+                rows="12"
+                required
+            ></textarea>
+        </label>
+
+        <label class="checkbox">
+            <input
+                id="published"
+                type="checkbox"
+                checked
+            >
+
+            Published
+        </label>
+
+        <div class="actions">
+
+            <button type="submit">
+                Save Post
+            </button>
+
+            <button
+                type="button"
+                class="secondary"
+                id="cancel-edit"
+            >
+                Cancel
+            </button>
+
+        </div>
+
+    </form>
+
+    <p id="message"></p>
+
+</section>
+
+<section>
+
+    <h2>Existing Posts</h2>
+
+    <div id="admin-posts">
+        Loading...
+    </div>
+
+</section>
+
+</main>
+
+<footer>
+    Ronish Maharjan · Student ID: 79010424
+</footer>
+
+<script src="/js/admin.js"></script>
+
+</body>
+</html>
+

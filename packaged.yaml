@@ -1,0 +1,302 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform:
+- AWS::Serverless-2016-10-31
+Description: 'Serverless portfolio and blog for Ronish Maharjan. Student ID: 79010424.
+  Architecture: API Gateway -> Lambda -> private S3 for frontend, API Gateway -> Lambda
+  -> DynamoDB for blog backend, Cognito for authentication, CloudWatch for logging.
+
+  '
+Parameters:
+  StudentId:
+    Type: String
+    Default: '79010424'
+    Description: Student ID used in AWS resource names
+Resources:
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::Sub:
+        - ronish-${StudentId}-frontend-${AWS::AccountId}
+        - {}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      SamResourceId: FrontendBucket
+  BlogTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName:
+        Fn::Sub:
+        - ronish-${StudentId}-blog-posts
+        - {}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: id
+        KeyType: HASH
+    Metadata:
+      SamResourceId: BlogTable
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName:
+        Fn::Sub:
+        - ronish-${StudentId}-users
+        - {}
+      UsernameAttributes:
+      - email
+      AutoVerifiedAttributes:
+      - email
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+    Metadata:
+      SamResourceId: UserPool
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName:
+        Fn::Sub:
+        - ronish-${StudentId}-web-client
+        - {}
+      UserPoolId:
+        Ref: UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+      - ALLOW_USER_PASSWORD_AUTH
+      - ALLOW_REFRESH_TOKEN_AUTH
+    Metadata:
+      SamResourceId: UserPoolClient
+  FrontendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub:
+        - /aws/lambda/ronish-${StudentId}-frontend
+        - {}
+      RetentionInDays: 7
+    Metadata:
+      SamResourceId: FrontendLogGroup
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub:
+        - /aws/lambda/ronish-${StudentId}-backend
+        - {}
+      RetentionInDays: 7
+    Metadata:
+      SamResourceId: BackendLogGroup
+  ApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub:
+        - /aws/apigateway/ronish-${StudentId}
+        - {}
+      RetentionInDays: 7
+    Metadata:
+      SamResourceId: ApiAccessLogGroup
+  PortfolioApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name:
+        Fn::Sub:
+        - ronish-${StudentId}-api
+        - {}
+      StageName: $default
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              audience:
+              - Ref: UserPoolClient
+              issuer:
+                Fn::Sub:
+                - https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
+                - UserPoolId:
+                    Ref: UserPool
+      AccessLogSettings:
+        DestinationArn:
+          Fn::GetAtt:
+          - ApiAccessLogGroup
+          - Arn
+        Format: '{"requestId":"$context.requestId","routeKey":"$context.routeKey","status":"$context.status","ip":"$context.identity.sourceIp"}'
+    Metadata:
+      SamResourceId: PortfolioApi
+  FrontendFunction:
+    Type: AWS::Serverless::Function
+    DependsOn:
+    - FrontendLogGroup
+    Properties:
+      FunctionName:
+        Fn::Sub:
+        - ronish-${StudentId}-frontend
+        - {}
+      CodeUri: s3://ronish-79010424-sam-artifacts-800504887858/50c2d9c3d1b2e8ac359ce04fcfe0cbf6
+      Handler: src/handler.handler
+      Runtime: nodejs24.x
+      Timeout: 10
+      MemorySize: 256
+      Role:
+        Fn::Sub:
+        - arn:${AWS::Partition}:iam::${AWS::AccountId}:role/LabRole
+        - {}
+      Environment:
+        Variables:
+          FRONTEND_BUCKET:
+            Ref: FrontendBucket
+      Events:
+        RootRoute:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: PortfolioApi
+            Path: /
+            Method: ANY
+            Auth:
+              Authorizer: NONE
+        FrontendRoute:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: PortfolioApi
+            Path: /{proxy+}
+            Method: ANY
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      SamResourceId: FrontendFunction
+  BackendFunction:
+    Type: AWS::Serverless::Function
+    DependsOn:
+    - BackendLogGroup
+    Properties:
+      FunctionName:
+        Fn::Sub:
+        - ronish-${StudentId}-backend
+        - {}
+      CodeUri: s3://ronish-79010424-sam-artifacts-800504887858/aa60330d620d2f510b8581793b243195
+      Handler: src/handler.handler
+      Runtime: nodejs24.x
+      Timeout: 15
+      MemorySize: 256
+      Role:
+        Fn::Sub:
+        - arn:${AWS::Partition}:iam::${AWS::AccountId}:role/LabRole
+        - {}
+      Environment:
+        Variables:
+          BLOG_TABLE_NAME:
+            Ref: BlogTable
+          COGNITO_CLIENT_ID:
+            Ref: UserPoolClient
+      Events:
+        Login:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: PortfolioApi
+            Path: /api/auth/login
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        GetPosts:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: PortfolioApi
+            Path: /api/posts
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        GetPost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: PortfolioApi
+            Path: /api/posts/{id}
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        CreatePost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: PortfolioApi
+            Path: /api/posts
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+        UpdatePost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: PortfolioApi
+            Path: /api/posts/{id}
+            Method: PUT
+            Auth:
+              Authorizer: CognitoAuthorizer
+        DeletePost:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: PortfolioApi
+            Path: /api/posts/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata:
+      SamResourceId: BackendFunction
+Outputs:
+  ApiUrl:
+    Description: 'Live portfolio and blog URL. Browser accesses API Gateway, not S3
+      directly.
+
+      '
+    Value:
+      Fn::Sub:
+      - https://${PortfolioApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/
+      - {}
+  FrontendBucketName:
+    Description: Private S3 bucket containing frontend files
+    Value:
+      Ref: FrontendBucket
+  BlogTableName:
+    Description: DynamoDB table containing blog posts
+    Value:
+      Ref: BlogTable
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value:
+      Ref: UserPool
+  UserPoolClientId:
+    Description: Cognito App Client ID
+    Value:
+      Ref: UserPoolClient
+  FrontendLambdaName:
+    Description: Lambda serving frontend files from private S3
+    Value:
+      Ref: FrontendFunction
+  BackendLambdaName:
+    Description: Lambda handling blog business logic
+    Value:
+      Ref: BackendFunction
+  StudentId:
+    Description: Student ID
+    Value:
+      Ref: StudentId
